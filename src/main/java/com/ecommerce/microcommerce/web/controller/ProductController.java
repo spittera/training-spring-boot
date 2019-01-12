@@ -2,6 +2,7 @@ package com.ecommerce.microcommerce.web.controller;
 
 import com.ecommerce.microcommerce.dao.ProductDao;
 import com.ecommerce.microcommerce.model.Product;
+import com.ecommerce.microcommerce.web.exceptions.ProduitGratuitException;
 import com.ecommerce.microcommerce.web.exceptions.ProduitIntrouvableException;
 import com.fasterxml.jackson.databind.ser.FilterProvider;
 import com.fasterxml.jackson.databind.ser.impl.SimpleBeanPropertyFilter;
@@ -16,10 +17,13 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import javax.validation.Valid;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
-@Api( description="API pour es opérations CRUD sur les produits.")
+@Api( description="API pour les opérations CRUD sur les produits.")
 
 @RestController
 public class ProductController {
@@ -31,10 +35,17 @@ public class ProductController {
     //Récupérer la liste des produits
 
     @RequestMapping(value = "/Produits", method = RequestMethod.GET)
+    @ApiOperation(value = "Récupére la liste des produits!")
 
     public MappingJacksonValue listeProduits() {
 
         Iterable<Product> produits = productDao.findAll();
+
+        for (Product product : produits) {
+            if (product.getPrix() <= 0) {
+                throw new ProduitGratuitException("ProduitGratuitException ID = " + product.getId() +" : prix = 0 ");
+            }
+        }
 
         SimpleBeanPropertyFilter monFiltre = SimpleBeanPropertyFilter.serializeAllExcept("prixAchat");
 
@@ -58,6 +69,10 @@ public class ProductController {
 
         if(produit==null) throw new ProduitIntrouvableException("Le produit avec l'id " + id + " est INTROUVABLE. Écran Bleu si je pouvais.");
 
+        if(produit.getPrix() <= 0){
+            throw new ProduitGratuitException("ProduitGratuitException ID = " + id +" : prix = 0 ");
+        }
+
         return produit;
     }
 
@@ -66,6 +81,7 @@ public class ProductController {
 
     //ajouter un produit
     @PostMapping(value = "/Produits")
+    @ApiOperation(value = "Ajoute un produit")
 
     public ResponseEntity<Void> ajouterProduit(@Valid @RequestBody Product product) {
 
@@ -73,6 +89,10 @@ public class ProductController {
 
         if (productAdded == null)
             return ResponseEntity.noContent().build();
+
+        if(productAdded.getPrix() <= 0){
+            throw new ProduitGratuitException("ProduitGratuitException ID = " + productAdded.getId() +" : prix = 0 ");
+        }
 
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
@@ -84,12 +104,14 @@ public class ProductController {
     }
 
     @DeleteMapping (value = "/Produits/{id}")
+    @ApiOperation(value = "Supprime un produit")
     public void supprimerProduit(@PathVariable int id) {
 
         productDao.delete(id);
     }
 
     @PutMapping (value = "/Produits")
+    @ApiOperation(value = "Sauvegarde les modifications sur un produit")
     public void updateProduit(@RequestBody Product product) {
 
         productDao.save(product);
@@ -98,9 +120,39 @@ public class ProductController {
 
     //Pour les tests
     @GetMapping(value = "test/produits/{prix}")
+    @ApiOperation(value = "Test de recherche de produit par limite de prix")
     public List<Product>  testeDeRequetes(@PathVariable int prix) {
 
         return productDao.chercherUnProduitCher(400);
+    }
+
+    @GetMapping(value = "/Produits/tries")
+    @ApiOperation(value = "Test de recherche de produit par limite de prix")
+    public List<Product> getProductsListOrderedByName() {
+        return productDao.findAllByOrderByNom();
+    }
+
+    @GetMapping(value = "Produits/marge")
+    @ApiOperation(value = "Calculer la marge de tous produits")
+    public MappingJacksonValue calculerMargeProduit(){
+        Iterable<Product> produits = productDao.findAll();
+
+        Map<String,Double> result = new HashMap<>();
+
+        for (Product product:produits
+                ) {
+            result.put(String.valueOf(afficherUnProduit(product.getId())),(double)(product.getPrix() - product.getPrixAchat()));
+        }
+
+        SimpleBeanPropertyFilter monFiltre = SimpleBeanPropertyFilter.serializeAllExcept("prixAchat");
+
+        FilterProvider listDeNosFiltres = new SimpleFilterProvider().addFilter("monFiltreDynamique", monFiltre);
+
+        MappingJacksonValue produitsFiltres = new MappingJacksonValue(result);
+
+        produitsFiltres.setFilters(listDeNosFiltres);
+
+        return produitsFiltres;
     }
 
 
